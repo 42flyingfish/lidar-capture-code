@@ -2,6 +2,7 @@
 #define DECODER_H
 
 #include<pcap.h>
+#include<fstream>
 
 
 
@@ -20,5 +21,6 @@ void signalHandler(int signum);
 
 double degreeToRadian(const double degree);
 
+void writeLine(std::ofstream & myfile, double x, double y, double z, double a, double d, int w);
 
 #endif

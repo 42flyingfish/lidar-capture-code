@@ -11,8 +11,6 @@
 #include <iostream>
 #include <pcap.h>
 
-
-
 // Global, should be removed or refactored into class or struct
 // needed for pcap_loop and pcap_breakloop
 pcap_t * pcap_handle;
@@ -20,12 +18,17 @@ pcap_t * pcap_handle;
 // Using this as the default NETMASK due to the lidar's settings
 #define NETMASK 0xffffff
 
+std::ofstream myfile;
+
+bool rotating = false;
+bool rollover = false;
+
 int getData() {
 	char errbuf[PCAP_ERRBUF_SIZE];
 	// set as interface
 	//const char * device = "eno1";
-	const char * device = "enp0s25";
-	//const char * device = "lo";
+	//const char * device = "enp0s25";
+	const char * device = "lo";
 
 	pcap_handle = pcap_open_live(device, // name of the device
 			BUFSIZ, // portion of the packet to capture
@@ -40,6 +43,7 @@ int getData() {
 	// Warning, will overwrite any pre-existing file
 	pcap_dumper_t * saveFile = pcap_dump_open(pcap_handle, "./data.pcap");
 
+	myfile.open("example.csv");
 
 	signal(SIGINT, signalHandler);
 
@@ -48,9 +52,11 @@ int getData() {
 	struct bpf_program fcode;
 	const char * packet_filter  = "udp port 2368";
 
+
 	//compile the filter
 	if (pcap_compile(pcap_handle, &fcode, packet_filter, 1, NETMASK) < 0 ) {
 		std::cout << "\nUnable to compile the packet filter. Check the syntax.\n" << std::endl;
+		myfile.close();
 		return -1;
 	}
 
@@ -59,6 +65,7 @@ int getData() {
 	if (pcap_setfilter(pcap_handle, &fcode)<0)
 	{
 		std::cout << "\nError setting the filter.\n" << std::endl;
+		myfile.close();
 		return -1;
 	}
 
@@ -79,6 +86,8 @@ int getData() {
 	pcap_loop(pcap_handle, CAPLEN, callback, (unsigned char *)saveFile);
 	pcap_dump_close(saveFile);
 	pcap_close(pcap_handle);
+	myfile.flush();
+	myfile.close();
 	std::cout << "The procedure has ended\n";
 
 	return 0;
@@ -95,11 +104,9 @@ void callback(u_char *pcap_handle, const struct pcap_pkthdr *pkthdr, const u_cha
 		double distance{getDistance(packet, 44+2+3*14+i*100)};
 		double ch14X{distance * cos(degreeToRadian(-1)) * sin(degreeToRadian(azimuth))};
 		double ch14Y{distance * cos(degreeToRadian(-1)) * cos(degreeToRadian(azimuth))};
-		//double ch14Z{distance * sin(degreeToRadian(-1))};
-		std::cout << "Azimuth: " << azimuth << " distance: " << distance << std::endl;
-		// std::cout << "X: " << ch14X << ", Y: " << ch14Y << ", Z: " << ch14Z <<std::endl;
-		std::cout << "X: " << ch14X << ", Y: " << ch14Y << std::endl;
-		getTimestamp(packet);
+		double ch14Z{distance * sin(degreeToRadian(-1))};
+		if (distance > 0)
+		writeLine(myfile, ch14X, ch14Y, ch14Z, azimuth, distance, -1);
 	}
 }
 
@@ -143,4 +150,8 @@ void signalHandler(int signum) {
 // Simple utility function
 double degreeToRadian(const double degree) {
 	return (degree * M_PI) / 180.0;
+}
+
+void writeLine(std::ofstream & myfile, double x, double y, double z, double a, double d, int w) {
+	myfile << "s,s,s," << x << "," << y << "," << z << ",s,s," << a << "," << d << ",s,s," << w << std::endl;
 }
